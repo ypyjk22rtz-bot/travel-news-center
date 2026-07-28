@@ -50,6 +50,8 @@ export async function uploadWordPressMedia(
   mimeType: string,
   altText: string,
 ) {
+  const body = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+
   const response = await fetch(`${config.url}/wp-json/wp/v2/media`, {
     method: "POST",
     headers: {
@@ -57,7 +59,7 @@ export async function uploadWordPressMedia(
       "Content-Type": mimeType,
       "Content-Disposition": `attachment; filename="${filename.replace(/[^a-zA-Z0-9._-]/g, "-")}"`,
     },
-    body: bytes,
+    body,
   });
 
   const payload = await response.json().catch(() => ({}));
