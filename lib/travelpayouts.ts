@@ -99,28 +99,25 @@ export async function getTravelpayoutsDeals(): Promise<FlightDeal[]> {
       seen.add(key);
       return true;
     })
-    .map((item, index) => ({
+    .map((item, index): FlightDeal => ({
       id: `tp-${item.origin}-${item.destination}-${index}`,
-      dealType: "fare" as const,
+      dealType: "fare",
       title: `${item.origin} → ${item.destination} de la ${Math.round(item.price)} EUR`,
-      origin: item.origin,
-      destination: item.destination,
-      airlineCode: item.airline || null,
-      airlineName: item.airline || undefined,
+      originCode: item.origin,
+      destinationCode: item.destination,
+      airlineCode: item.airline,
+      airlineName: item.airline,
       price: Math.round(item.price),
-      previousPrice: null,
       currency: "EUR",
-      discountPercent: null,
-      travelStart: item.departure_at || null,
-      travelEnd: item.return_at || null,
-      bookingDeadline: item.expires_at || null,
-      promoCode: null,
       bookingUrl: bookingUrl(item.link),
+      departureDate: item.departure_at,
+      returnDate: item.return_at,
+      validUntil: item.expires_at,
       provider: "Travelpayouts / Aviasales",
       verified: false,
       relevanceRomania: relevance(item.origin),
       dealScore: score(item.price, item.origin, item.transfers),
-      status: "new" as const,
+      status: "new",
     }))
     .sort((a, b) => b.dealScore - a.dealScore || (a.price || Infinity) - (b.price || Infinity))
     .slice(0, 150);
