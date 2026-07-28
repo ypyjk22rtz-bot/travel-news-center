@@ -13,6 +13,8 @@ export type EditorialPackage = {
   pushTitle: string;
   pushBody: string;
   sourceNote: string;
+  sourceName: string;
+  sourceUrl: string;
 };
 
 function slugify(value: string) {
@@ -67,5 +69,7 @@ export function buildFallbackPackage(item: IntelligenceResult): EditorialPackage
     pushTitle: trim(item.title, 55),
     pushBody: trim(`Schimbare importantă pentru călători. Impact România: ${item.romaniaImpact}/100.`, 115),
     sourceNote,
+    sourceName: item.source,
+    sourceUrl: item.url,
   };
 }
