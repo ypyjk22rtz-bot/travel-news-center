@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase-admin";
 import { getTravelpayoutsDeals, travelpayoutsConfigured } from "@/lib/travelpayouts";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export async function GET() {
   if (!travelpayoutsConfigured()) {
@@ -10,7 +11,7 @@ export async function GET() {
       mode: "unconfigured",
       provider: "Travelpayouts",
       deals: [],
-      error: "TRAVELPAYOUTS_API_TOKEN nu este configurat în Vercel.",
+      error: "Adaugă în Vercel TRAVELPAYOUTS_API_TOKEN și TRAVELPAYOUTS_MARKER.",
     }, { status: 503 });
   }
 
@@ -51,9 +52,10 @@ export async function GET() {
       mode: "live",
       provider: "Travelpayouts",
       cachedPrices: true,
+      disclaimer: "Prețuri găsite recent în cache-ul Travelpayouts. Tariful final se reconfirmă în pagina de căutare.",
       fetchedAt: new Date().toISOString(),
       deals,
-    });
+    }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Eroare necunoscută Travelpayouts.";
     return NextResponse.json({ mode: "error", provider: "Travelpayouts", deals: [], error: message }, { status: 502 });
