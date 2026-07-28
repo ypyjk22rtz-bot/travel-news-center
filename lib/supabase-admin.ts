@@ -7,6 +7,17 @@ function normalizeSupabaseUrl(value: string) {
     .replace(/\/rest\/v1$/i, "");
 }
 
+const noStoreFetch: typeof fetch = (input, init = {}) =>
+  fetch(input, {
+    ...init,
+    cache: "no-store",
+    headers: {
+      ...(init.headers || {}),
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+      Pragma: "no-cache",
+    },
+  });
+
 export function getSupabaseAdmin() {
   const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
   const url = normalizeSupabaseUrl(rawUrl);
@@ -16,6 +27,7 @@ export function getSupabaseAdmin() {
 
   return createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
+    global: { fetch: noStoreFetch },
   });
 }
 
