@@ -53,8 +53,10 @@ function similarity(a: string, b: string) {
   const left = normalizeWords(a);
   const right = normalizeWords(b);
   if (!left.size || !right.size) return 0;
-  const intersection = [...left].filter((word) => right.has(word)).length;
-  const union = new Set([...left, ...right]).size;
+  const leftWords = Array.from(left);
+  const rightWords = Array.from(right);
+  const intersection = leftWords.filter((word) => right.has(word)).length;
+  const union = new Set(leftWords.concat(rightWords)).size;
   return intersection / union;
 }
 
