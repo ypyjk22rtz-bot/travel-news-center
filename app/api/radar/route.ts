@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase-admin";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+type ViralHeadline = { title: string; ctrScore: number };
 type IntelligencePackage = {
   summary30s?: string;
   summary2m?: string;
@@ -12,6 +13,9 @@ type IntelligencePackage = {
   impactScore?: number;
   impactReasons?: string[];
   duplicateAssessment?: string;
+  viralHeadlines?: ViralHeadline[];
+  estimatedCtr?: number;
+  trendingScore?: number;
 };
 
 function signalType(item: any) {
@@ -37,15 +41,7 @@ function urgency(item: any) {
 }
 
 function normalizeWords(value: string) {
-  return new Set(
-    value
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z0-9 ]/g, " ")
-      .split(/\s+/)
-      .filter((word) => word.length > 3),
-  );
+  return new Set(value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((word) => word.length > 3));
 }
 
 function similarity(a: string, b: string) {
@@ -72,60 +68,57 @@ function romaniaImpact(item: any, source: any, intelligence: IntelligencePackage
   const text = `${item.source_title || ""} ${item.source_excerpt || ""} ${item.category || ""} ${source?.country_code || ""}`.toLowerCase();
   const reasons: string[] = [];
   let score = 18;
-
-  if (/romania|românia|romanian|bucharest|bucurești|bucuresti|cluj|iasi|iași|timisoara|timișoara|otopeni|henri coanda|buh|otp|ias|clj|tsr/.test(text)) {
-    score += 42;
-    reasons.push("Afectează direct România sau un aeroport românesc.");
-  }
-  if (/visa|viză|viza|passport|entry requirement/.test(text)) {
-    score += 18;
-    reasons.push("Poate modifica regulile de intrare pentru călători.");
-  }
-  if (/route|ruta|direct flight|new flight|launch|resume/.test(text)) {
-    score += 15;
-    reasons.push("Poate schimba opțiunile de zbor și conectivitatea.");
-  }
-  if (/strike|grev|cancel|delay|closure|closed|disruption/.test(text)) {
-    score += 15;
-    reasons.push("Poate afecta rezervări și plecări existente.");
-  }
-  if (/tax|fee|baggage|bagaj|carry-on/.test(text)) {
-    score += 10;
-    reasons.push("Poate modifica costurile sau condițiile călătoriei.");
-  }
-  if (source?.country_code === "RO") {
-    score += 20;
-    reasons.push("Sursa sau evenimentul este din România.");
-  }
+  if (/romania|românia|romanian|bucharest|bucurești|bucuresti|cluj|iasi|iași|timisoara|timișoara|otopeni|henri coanda|buh|otp|ias|clj|tsr/.test(text)) { score += 42; reasons.push("Afectează direct România sau un aeroport românesc."); }
+  if (/visa|viză|viza|passport|entry requirement/.test(text)) { score += 18; reasons.push("Poate modifica regulile de intrare pentru călători."); }
+  if (/route|ruta|direct flight|new flight|launch|resume/.test(text)) { score += 15; reasons.push("Poate schimba opțiunile de zbor și conectivitatea."); }
+  if (/strike|grev|cancel|delay|closure|closed|disruption/.test(text)) { score += 15; reasons.push("Poate afecta rezervări și plecări existente."); }
+  if (/tax|fee|baggage|bagaj|carry-on/.test(text)) { score += 10; reasons.push("Poate modifica costurile sau condițiile călătoriei."); }
+  if (source?.country_code === "RO") { score += 20; reasons.push("Sursa sau evenimentul este din România."); }
   if (intelligence?.impactScore) score = Math.round(score * 0.55 + Number(intelligence.impactScore) * 0.45);
-
   const finalScore = Math.max(0, Math.min(100, score));
   if (!reasons.length) reasons.push("Impact indirect; relevanța pentru români trebuie verificată editorial.");
   return { score: finalScore, reasons: reasons.slice(0, 4) };
 }
 
+function priorityLabel(item: any) {
+  const text = `${item.source_title || ""} ${item.source_excerpt || ""}`.toLowerCase();
+  if (item.urgency === "critical") return "🔥 BREAKING";
+  if (item.romania_impact >= 75) return "🇷🇴 ROMÂNIA";
+  if (item.signal_type === "promotii") return "✈ FLIGHT DEAL";
+  if (item.signal_type === "siguranta" || item.signal_type === "perturbari") return "⚠ ALERTĂ";
+  if (/asia|japan|japonia|china|thailand|bangkok|vietnam|singapore|korea/.test(text)) return "🌏 ASIA";
+  if (/island|beach|resort|destination|destina/.test(text)) return "🏖 DESTINAȚII";
+  return item.urgency === "high" ? "⭐ IMPORTANT" : "📰 URMĂREȘTE";
+}
+
+function buildTrending(signals: any[]) {
+  const stop = new Set(["care", "este", "sunt", "after", "with", "from", "this", "that", "into", "pentru", "despre", "unei", "unui", "the", "and", "travel", "flight", "flights", "airport"]);
+  const counts = new Map<string, { label: string; count: number; score: number }>();
+  for (const item of signals) {
+    const words = `${item.generated_title || item.source_title || ""}`.replace(/[^A-Za-zÀ-ž0-9 ]/g, " ").split(/\s+/).filter(Boolean);
+    for (const raw of words) {
+      const key = raw.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      if (key.length < 4 || stop.has(key) || /^\d+$/.test(key)) continue;
+      const current = counts.get(key) || { label: raw, count: 0, score: 0 };
+      current.count += 1;
+      current.score += Number(item.intelligence_score || 0) + Number(item.discover_score || 0) + Number(item.romania_impact || 0);
+      counts.set(key, current);
+    }
+  }
+  return Array.from(counts.values()).filter((item) => item.count >= 2).sort((a, b) => b.count - a.count || b.score - a.score).slice(0, 10).map((item, index) => ({ rank: index + 1, topic: item.label, mentions: item.count, heat: Math.min(100, Math.round(item.score / Math.max(1, item.count * 2.2))) }));
+}
+
 export async function GET() {
   const supabase = getSupabaseAdmin();
   if (!supabase) return NextResponse.json({ error: "Supabase nu este configurat." }, { status: 500 });
-
-  const { data, error } = await supabase
-    .from("tnc_news_items")
-    .select("*")
-    .neq("status", "rejected")
-    .order("detected_at", { ascending: false })
-    .limit(250);
-
+  const { data, error } = await supabase.from("tnc_news_items").select("*").neq("status", "rejected").order("detected_at", { ascending: false }).limit(250);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const ids = (data || []).map((item) => item.id);
   const sourceIds = Array.from(new Set((data || []).map((item) => item.source_id).filter(Boolean)));
   const [{ data: generated }, { data: sources }] = await Promise.all([
-    ids.length
-      ? supabase.from("tnc_generated_content").select("news_item_id, seo_title, subtitle, excerpt, cta_html").in("news_item_id", ids)
-      : Promise.resolve({ data: [] as any[] }),
-    sourceIds.length
-      ? supabase.from("tnc_sources").select("id, name, country_code, source_type").in("id", sourceIds)
-      : Promise.resolve({ data: [] as any[] }),
+    ids.length ? supabase.from("tnc_generated_content").select("news_item_id, seo_title, subtitle, excerpt, cta_html").in("news_item_id", ids) : Promise.resolve({ data: [] as any[] }),
+    sourceIds.length ? supabase.from("tnc_sources").select("id, name, country_code, source_type").in("id", sourceIds) : Promise.resolve({ data: [] as any[] }),
   ]);
 
   const enriched = (data || []).map((item) => {
@@ -133,68 +126,56 @@ export async function GET() {
     const source = (sources || []).find((row) => row.id === item.source_id) || null;
     const intelligence = parseIntelligence(generatedRow?.cta_html);
     const impact = romaniaImpact(item, source, intelligence);
-    return {
+    const base = {
       ...item,
       signal_type: signalType(item),
       urgency: urgency(item),
       source_name: source?.name || "Sursă necunoscută",
       source_country: source?.country_code || "Global",
       generated_title: generatedRow?.seo_title || null,
+      generated: Boolean(generatedRow),
+      viral_headlines: intelligence?.viralHeadlines || [],
+      estimated_ctr: intelligence?.estimatedCtr || null,
+      trending_score: intelligence?.trendingScore || null,
       summary30s: intelligence?.summary30s || generatedRow?.excerpt || item.source_excerpt || "Rezumatul AI nu a fost încă generat.",
-      summary2m: intelligence?.summary2m || "Generează pachetul AI Intelligence în Approval Center pentru rezumatul extins.",
+      summary2m: intelligence?.summary2m || "Generează pachetul AI Intelligence pentru rezumatul extins.",
       verdict: intelligence?.verdict || null,
       verdict_reason: intelligence?.verdictReason || null,
       duplicate_assessment: intelligence?.duplicateAssessment || null,
       romania_impact: impact.score,
       romania_reasons: impact.reasons,
     };
+    return { ...base, priority_label: priorityLabel(base) };
   });
 
   const consumed = new Set<string>();
   const signals: any[] = [];
   for (const primary of enriched) {
     if (consumed.has(primary.id)) continue;
-    const related = enriched.filter((candidate) => {
-      if (candidate.id === primary.id || consumed.has(candidate.id)) return false;
-      if (candidate.signal_type !== primary.signal_type) return false;
-      return similarity(primary.source_title, candidate.source_title) >= 0.42;
-    });
+    const related = enriched.filter((candidate) => candidate.id !== primary.id && !consumed.has(candidate.id) && candidate.signal_type === primary.signal_type && similarity(primary.source_title, candidate.source_title) >= 0.42);
     related.forEach((candidate) => consumed.add(candidate.id));
     consumed.add(primary.id);
-
     const group = [primary].concat(related).sort((a, b) => Number(b.intelligence_score || 0) - Number(a.intelligence_score || 0));
     const leader = group[0];
     signals.push({
       ...leader,
       duplicate_count: group.length,
-      confirmations: group.map((item) => ({
-        id: item.id,
-        title: item.source_title,
-        sourceName: item.source_name,
-        sourceUrl: item.source_url,
-        detectedAt: item.detected_at,
-      })),
+      confirmations: group.map((item) => ({ id: item.id, title: item.source_title, sourceName: item.source_name, sourceUrl: item.source_url, detectedAt: item.detected_at })),
       confidence: Math.min(100, 54 + Math.max(0, group.length - 1) * 12 + Math.round(Number(leader.intelligence_score || 0) * 0.22)),
     });
   }
 
   signals.sort((a, b) => {
     const priority = { critical: 4, high: 3, medium: 2, low: 1 } as Record<string, number>;
-    return (priority[b.urgency] || 0) - (priority[a.urgency] || 0)
-      || Number(b.romania_impact || 0) - Number(a.romania_impact || 0)
-      || Number(b.intelligence_score || 0) - Number(a.intelligence_score || 0);
+    return (priority[b.urgency] || 0) - (priority[a.urgency] || 0) || Number(b.romania_impact || 0) - Number(a.romania_impact || 0) || Number(b.intelligence_score || 0) - Number(a.intelligence_score || 0);
   });
 
-  const counts = signals.reduce((acc: Record<string, number>, item: any) => {
-    acc[item.signal_type] = (acc[item.signal_type] || 0) + 1;
-    acc[item.urgency] = (acc[item.urgency] || 0) + 1;
-    return acc;
-  }, {});
-
+  const counts = signals.reduce((acc: Record<string, number>, item: any) => { acc[item.signal_type] = (acc[item.signal_type] || 0) + 1; acc[item.urgency] = (acc[item.urgency] || 0) + 1; return acc; }, {});
   return NextResponse.json({
     mode: "live",
     fetchedAt: new Date().toISOString(),
     signals,
+    trending: buildTrending(signals),
     stats: {
       total: signals.length,
       rawItems: enriched.length,
