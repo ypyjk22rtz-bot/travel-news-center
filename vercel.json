@@ -4,5 +4,11 @@
   "buildCommand": "npm run build",
   "installCommand": "npm install",
   "outputDirectory": ".next",
-  "regions": ["fra1"]
+  "regions": ["fra1"],
+  "crons": [
+    {
+      "path": "/api/scan",
+      "schedule": "0 * * * *"
+    }
+  ]
 }
