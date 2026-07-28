@@ -50,13 +50,16 @@ function buildSearchUrl(item: LatestPrice) {
     infants: "0",
     trip_class: "0",
     currency: "EUR",
-    locale: "en",
+    locale: "en_us",
     one_way: item.return_date ? "false" : "true",
     marker: `${getMarker()}.tnc_deals`,
   });
   if (item.depart_date) query.set("depart_date", item.depart_date);
   if (item.return_date) query.set("return_date", item.return_date);
-  return `https://search.aviasales.com/flights/?${query.toString()}`;
+
+  // Use the international results endpoint directly. The search subdomain may
+  // redirect visitors to a regional .ru host based on cookies or geolocation.
+  return `https://www.aviasales.com/searches/new?${query.toString()}`;
 }
 
 function relevance(origin: string) {
