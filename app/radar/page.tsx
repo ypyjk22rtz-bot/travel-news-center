@@ -34,6 +34,12 @@ type Signal = {
   summary2m: string;
   verdict: string | null;
   verdict_reason: string | null;
+  auto_verdict: string;
+  auto_verdict_reasons: string[];
+  viral_score: number;
+  breaking_score: number;
+  ai_confidence: number;
+  composite_score: number;
   duplicate_assessment: string | null;
   duplicate_count: number;
   confidence: number;
@@ -41,17 +47,8 @@ type Signal = {
 };
 
 type RadarStats = {
-  total: number;
-  rawItems: number;
-  groupedDuplicates: number;
-  highRomaniaImpact: number;
-  critical: number;
-  high: number;
-  routes: number;
-  visas: number;
-  disruptions: number;
-  promotions: number;
-  safety: number;
+  total: number; rawItems: number; groupedDuplicates: number; highRomaniaImpact: number;
+  critical: number; high: number; routes: number; visas: number; disruptions: number; promotions: number; safety: number;
 };
 
 const FILTERS = [["toate", "Toate"], ["rute", "Rute noi"], ["vize", "Vize"], ["perturbari", "Perturbări"], ["taxe", "Taxe"], ["bagaje", "Bagaje"], ["promotii", "Promoții"], ["siguranta", "Siguranță"]] as const;
@@ -63,6 +60,10 @@ function label(value: string) {
 function stars(score: number) {
   const count = Math.max(1, Math.min(5, Math.round(score / 20)));
   return "★".repeat(count) + "☆".repeat(5 - count);
+}
+
+function scoreClass(score: number) {
+  return score >= 85 ? "critical" : score >= 70 ? "high" : "medium";
 }
 
 export default function RadarPage() {
@@ -94,9 +95,7 @@ export default function RadarPage() {
       if (id) setSelected(nextSignals.find((item) => item.id === id) || null);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Travel Radar nu a putut fi încărcat.");
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   }
 
   async function scanAndLoad() {
@@ -106,12 +105,7 @@ export default function RadarPage() {
       const scanResponse = await fetch("/api/scan", { method: "POST", cache: "no-store" });
       const scan = await scanResponse.json().catch(() => ({}));
       if (!scanResponse.ok) throw new Error(scan.error || "Scanarea surselor a eșuat.");
-
-      const checked = Number(scan.checked || 0);
-      const successful = Number(scan.successful || 0);
-      const found = Number(scan.newsFound || 0);
-      const inserted = Number(scan.newsInserted || 0);
-      setMessage(`Scanare terminată: ${checked} surse verificate, ${successful} reușite, ${found} articole găsite, ${inserted} știri noi salvate.`);
+      setMessage(`Scanare terminată: ${Number(scan.checked || 0)} surse verificate, ${Number(scan.successful || 0)} reușite, ${Number(scan.newsFound || 0)} articole găsite, ${Number(scan.newsInserted || 0)} știri noi salvate.`);
       await load(undefined, true);
     } catch (error) {
       setMessage(`Eroare la scanare: ${error instanceof Error ? error.message : "Scanarea a eșuat."}`);
@@ -128,6 +122,11 @@ export default function RadarPage() {
     return !query.trim() || haystack.includes(query.trim().toLowerCase());
   }), [signals, filter, urgency, query]);
 
+  function showTrending(topic: string) {
+    setQuery(topic); setFilter("toate"); setUrgency("toate");
+    window.setTimeout(() => document.getElementById("priority-queue")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  }
+
   async function generate(item: Signal) {
     setBusy(item.id);
     setModalMessage("Se generează articolul, scorurile, titlurile, pachetul social și promptul imaginii...");
@@ -137,34 +136,23 @@ export default function RadarPage() {
       if (!response.ok) throw new Error(payload.error || "Pachetul AI nu a putut fi generat.");
       setModalMessage("Pachetul AI complet a fost generat. Semnalul a fost actualizat.");
       await load(item.id);
-    } catch (error) {
-      setModalMessage(`Eroare: ${error instanceof Error ? error.message : "Generarea a eșuat."}`);
-    } finally {
-      setBusy("");
-    }
+    } catch (error) { setModalMessage(`Eroare: ${error instanceof Error ? error.message : "Generarea a eșuat."}`); }
+    finally { setBusy(""); }
   }
 
   async function setStatus(item: Signal, status: "reviewing" | "approved" | "rejected") {
-    setBusy(item.id);
-    setModalMessage("Se actualizează statusul...");
+    setBusy(item.id); setModalMessage("Se actualizează statusul...");
     try {
       const response = await fetch("/api/approval", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ newsItemId: item.id, status }) });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || "Statusul nu a putut fi modificat.");
       setModalMessage(status === "reviewing" ? "Semnalul a fost trimis în analiza editorială." : status === "approved" ? "Semnalul a fost aprobat." : "Semnalul a fost respins.");
       await load(item.id);
-    } catch (error) {
-      setModalMessage(`Eroare: ${error instanceof Error ? error.message : "Acțiunea a eșuat."}`);
-    } finally {
-      setBusy("");
-    }
+    } catch (error) { setModalMessage(`Eroare: ${error instanceof Error ? error.message : "Acțiunea a eșuat."}`); }
+    finally { setBusy(""); }
   }
 
-  function openSignal(item: Signal) {
-    setSummaryMode("30s");
-    setModalMessage("");
-    setSelected(item);
-  }
+  function openSignal(item: Signal) { setSummaryMode("30s"); setModalMessage(""); setSelected(item); }
 
   return <main className="shell">
     <aside className="sidebar">
@@ -174,8 +162,8 @@ export default function RadarPage() {
     </aside>
 
     <section className="content">
-      <header className="topbar"><div><p className="eyebrow">TRAVEL INTELLIGENCE ENGINE</p><h1>Travel Radar 3.0</h1><span>Priorități, trending, duplicate și generare AI direct din radar.</span></div><button onClick={scanAndLoad} disabled={loading}>{loading ? "Se scanează sursele..." : "↻ Scanează și actualizează"}</button></header>
-      <div className="notice"><strong>CONTROL UMAN</strong><span>Butonul pornește scanarea surselor, salvează știrile noi și actualizează Radarul. Nicio știre nu este publicată automat.</span></div>
+      <header className="topbar"><div><p className="eyebrow">AI INTELLIGENCE ENGINE 4.0</p><h1>Travel Radar 4.0</h1><span>Scoruri editoriale, verdict automat, trenduri și generare AI.</span></div><button onClick={scanAndLoad} disabled={loading}>{loading ? "Se scanează sursele..." : "↻ Scanează și actualizează"}</button></header>
+      <div className="notice"><strong>CONTROL UMAN</strong><span>AI calculează și recomandă. Nicio știre nu este publicată automat.</span></div>
       {message && <section className="panel"><p>{message}</p></section>}
 
       <section className="stats">
@@ -190,22 +178,22 @@ export default function RadarPage() {
         <div className="newsTable">{trending.map((topic) => <article className="newsRow" key={`${topic.topic}-${topic.rank}`}>
           <div className="score medium"><strong>{topic.rank}</strong><small>TOP</small></div>
           <div className="newsMain"><h3>{topic.topic}</h3><p>{topic.mentions} mențiuni · Heat Score {topic.heat}/100</p></div>
-          <button className="open" onClick={() => setQuery(topic.topic)}>Vezi semnalele</button>
+          <button className="open" onClick={() => showTrending(topic.topic)}>Vezi semnalele</button>
         </article>)}</div>
       </section>}
 
-      <section className="panel">
-        <div className="panelTitle"><div><h2>Priority Queue</h2><p>Semnale ordonate după urgență, România, Discover și Travel Score.</p></div></div>
+      <section className="panel" id="priority-queue">
+        <div className="panelTitle"><div><h2>Priority Queue</h2><p>Ordonare după scorul editorial compozit, urgență și impact.</p></div></div>
         <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Caută companie, țară, aeroport, sursă sau subiect..." style={{ width: "100%", marginBottom: 14 }} />
         <div className="filters" style={{ marginBottom: 10 }}>{FILTERS.map(([value, text]) => <button key={value} className={filter === value ? "selected" : ""} onClick={() => setFilter(value)}>{text}</button>)}</div>
         <div className="filters" style={{ marginBottom: 18 }}>{[["toate","Toate prioritățile"],["critical","Critic"],["high","High"],["medium","Medium"],["low","Low"]].map(([value,text]) => <button key={value} className={urgency === value ? "selected" : ""} onClick={() => setUrgency(value)}>{text}</button>)}</div>
         <div className="newsTable">
           {visible.map((item) => <article className="newsRow" key={item.id}>
-            <div className={`score ${item.urgency === "critical" ? "critical" : item.urgency === "high" ? "high" : "medium"}`}><strong>{item.intelligence_score || 0}</strong><small>TRAVEL</small></div>
-            <div className="newsMain"><div className="badges"><span>{item.priority_label}</span><em>{label(item.signal_type)}</em><em>RO {item.romania_impact}/100</em>{item.duplicate_count > 1 && <em>{item.duplicate_count} SURSE</em>}</div><h3>{item.generated_title || item.source_title}</h3><p>{stars(item.romania_impact)} · Încredere {item.confidence}/100 · Discover {item.discover_score || 0}/100 {item.generated ? "· AI COMPLET" : "· NEGENERAT"}</p></div>
-            <span className="status">{item.verdict || item.status}</span><button className="open" onClick={() => openSignal(item)}>Analizează</button>
+            <div className={`score ${scoreClass(item.composite_score)}`}><strong>{item.composite_score || 0}</strong><small>AI SCORE</small></div>
+            <div className="newsMain"><div className="badges"><span>{item.priority_label}</span><em>{label(item.signal_type)}</em><em>RO {item.romania_impact}</em><em>VIRAL {item.viral_score}</em><em>BREAK {item.breaking_score}</em>{item.duplicate_count > 1 && <em>{item.duplicate_count} SURSE</em>}</div><h3>{item.generated_title || item.source_title}</h3><p>{stars(item.composite_score)} · Discover {item.discover_score}/100 · AI Confidence {item.ai_confidence}/100</p></div>
+            <span className="status">{item.verdict || item.auto_verdict}</span><button className="open" onClick={() => openSignal(item)}>Analizează</button>
           </article>)}
-          {!loading && visible.length === 0 && <p>Nu există semnale. Apasă „Scanează și actualizează” pentru a verifica următorul lot de surse.</p>}
+          {!loading && visible.length === 0 && <p>Nu există semnale pentru filtrele selectate. Rulează o scanare sau resetează filtrele.</p>}
         </div>
       </section>
     </section>
@@ -213,16 +201,17 @@ export default function RadarPage() {
     {selected && <div className="modalBackdrop" onClick={() => busy ? undefined : setSelected(null)}><section className="modal" onClick={(event) => event.stopPropagation()}>
       <button className="close" onClick={() => busy ? undefined : setSelected(null)}>×</button>
       <p className="eyebrow">{selected.priority_label} · {selected.urgency.toUpperCase()}</p><h2>{selected.generated_title || selected.source_title}</h2>
-      <div className="modalMeta"><span>Travel {selected.intelligence_score || 0}/100</span><span>România {selected.romania_impact}/100</span><span>Discover {selected.discover_score || 0}/100</span><span>Încredere {selected.confidence}/100</span>{selected.estimated_ctr && <span>CTR {selected.estimated_ctr}%</span>}</div>
+      <div className="modalMeta"><span>AI Score {selected.composite_score}/100</span><span>Travel {selected.intelligence_score}/100</span><span>România {selected.romania_impact}/100</span><span>Discover {selected.discover_score}/100</span><span>Viral {selected.viral_score}/100</span><span>Breaking {selected.breaking_score}/100</span><span>Confidence {selected.ai_confidence}/100</span>{selected.estimated_ctr && <span>CTR {selected.estimated_ctr}%</span>}</div>
       {modalMessage && <div className="notice"><strong>{modalMessage.startsWith("Eroare") ? "EROARE" : busy ? "ÎN LUCRU" : "REZULTAT"}</strong><span>{modalMessage}</span></div>}
-      {selected.verdict && <div className="notice"><strong>{selected.verdict}</strong><span>{selected.verdict_reason || "Verdict generat de AI Intelligence."}</span></div>}
+      <div className="notice"><strong>{selected.verdict || selected.auto_verdict}</strong><span>{selected.verdict_reason || selected.auto_verdict_reasons.join(" ")}</span></div>
+      <div className="sourceBox"><strong>De ce recomandă AI această decizie?</strong>{selected.auto_verdict_reasons.map((reason) => <p key={reason}>✓ {reason}</p>)}</div>
       <div className="sourceBox"><strong>Impact pentru România · {stars(selected.romania_impact)}</strong>{selected.romania_reasons.map((reason) => <p key={reason}>✓ {reason}</p>)}</div>
       <div className="sourceBox"><strong>Explică-mi rapid</strong><div className="filters" style={{ marginTop: 12, marginBottom: 12 }}><button className={summaryMode === "30s" ? "selected" : ""} onClick={() => setSummaryMode("30s")}>30 secunde</button><button className={summaryMode === "2m" ? "selected" : ""} onClick={() => setSummaryMode("2m")}>2 minute</button></div><p>{summaryMode === "30s" ? selected.summary30s : selected.summary2m}</p></div>
       {selected.viral_headlines.length > 0 && <div className="sourceBox"><strong>Titluri AI recomandate</strong>{selected.viral_headlines.slice(0, 10).map((headline, index) => <p key={`${headline.title}-${index}`}><b>{index + 1}. {headline.title}</b> · CTR Score {headline.ctrScore}/100</p>)}</div>}
       <div className="sourceBox"><strong>Sursa principală</strong><p>{selected.source_excerpt || "Nu există rezumat disponibil."}</p><a href={selected.source_url} target="_blank" rel="noreferrer">Deschide {selected.source_name} ↗</a></div>
       <div className="sourceBox"><strong>{selected.duplicate_count > 1 ? `${selected.duplicate_count} surse au raportat acest subiect` : "Confirmarea surselor"}</strong><p>{selected.duplicate_assessment || (selected.duplicate_count > 1 ? "Sursele similare au fost grupate automat. Verifică diferențele înainte de publicare." : "Momentan a fost identificată o singură sursă distinctă.")}</p>{selected.confirmations.map((confirmation) => <p key={confirmation.id}><a href={confirmation.sourceUrl} target="_blank" rel="noreferrer">{confirmation.sourceName}: {confirmation.title} ↗</a></p>)}</div>
       <div className="actions">
-        <button className="primary" onClick={() => generate(selected)} disabled={busy === selected.id}>{busy === selected.id ? "Se generează..." : selected.generated ? "Regenerează pachetul AI" : "Generează pachet complet"}</button>
+        <button className="primary" onClick={() => generate(selected)} disabled={busy === selected.id}>{busy === selected.id ? "Se generează..." : selected.generated ? "Regenerează pachetul AI" : "Generează pachet editorial"}</button>
         <button onClick={() => setStatus(selected, "reviewing")} disabled={busy === selected.id}>Trimite la analiză</button>
         <button onClick={() => setStatus(selected, "approved")} disabled={busy === selected.id}>Aprobă semnalul</button>
         <Link href="/approval">Deschide Approval Center ↗</Link>
