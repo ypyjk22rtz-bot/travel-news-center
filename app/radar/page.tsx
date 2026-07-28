@@ -14,6 +14,7 @@ type Confirmation = {
 type Signal = {
   id: string;
   source_title: string;
+  generated_title: string | null;
   source_excerpt: string | null;
   source_url: string;
   source_name: string;
