@@ -38,6 +38,27 @@ function termSlug(value: string) {
     .slice(0, 80);
 }
 
+function travelpayoutsCtaHtml() {
+  const marker = process.env.TRAVELPAYOUTS_MARKER?.trim();
+  if (!marker) return "";
+  const query = new URLSearchParams({
+    adults: "1",
+    children: "0",
+    infants: "0",
+    trip_class: "0",
+    currency: "EUR",
+    marker: `${marker}.tnc_article`,
+  });
+  const url = `https://search.aviasales.com/flights/?${query.toString()}`;
+  return `
+<div style="margin:28px 0;padding:22px;border:1px solid #dbeafe;border-radius:14px;background:#f8fbff;">
+  <h3 style="margin:0 0 8px;">Caută cele mai ieftine bilete</h3>
+  <p style="margin:0 0 16px;">Compară tarifele disponibile pentru următoarea călătorie. Prețurile se verifică în timp real în pagina de căutare.</p>
+  <p style="margin:0;"><a href="${url}" target="_blank" rel="nofollow sponsored noopener" style="display:inline-block;padding:11px 18px;border-radius:8px;background:#0b63ce;color:#fff;text-decoration:none;font-weight:700;">Verifică ofertele de zbor</a></p>
+  <small style="display:block;margin-top:10px;color:#64748b;">Link afiliat Travelpayouts / Aviasales.</small>
+</div>`;
+}
+
 async function findOrCreateWordPressTerm(
   config: WordPressConfig,
   taxonomy: "categories" | "tags",
@@ -171,7 +192,7 @@ export async function createWordPressPost(
     await Promise.all(uniqueTagNames.map((tag) => findOrCreateWordPressTerm(config, "tags", tag)))
   ).filter((id): id is number => typeof id === "number" && Number.isFinite(id));
 
-  const content = `${editorial.article}\n<hr />\n<p><strong>Sursa oficială:</strong> <a href="${editorial.sourceUrl}" target="_blank" rel="noopener noreferrer">${editorial.sourceName}</a></p>`;
+  const content = `${editorial.article}${travelpayoutsCtaHtml()}\n<hr />\n<p><strong>Sursa oficială:</strong> <a href="${editorial.sourceUrl}" target="_blank" rel="noopener noreferrer">${editorial.sourceName}</a></p>`;
 
   const response = await fetch(`${config.url}/wp-json/wp/v2/posts`, {
     method: "POST",
