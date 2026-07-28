@@ -1,0 +1,48 @@
+import type { TravelSource } from "@/lib/source-catalog";
+
+const rss = (
+  id: string,
+  name: string,
+  kind: TravelSource["kind"],
+  url: string,
+  feedUrl?: string,
+  frequencyMinutes = 60,
+): TravelSource => ({
+  id,
+  name,
+  country: "RO",
+  kind,
+  method: feedUrl ? "rss" : "web",
+  url,
+  feedUrl,
+  active: true,
+  frequencyMinutes,
+});
+
+export const romanianSources: TravelSource[] = [
+  rss("ro-mae", "Ministerul Afacerilor Externe România", "authority", "https://www.mae.ro/travel-alerts", undefined, 60),
+  rss("ro-mturism", "Ministerul Economiei, Digitalizării, Antreprenoriatului și Turismului", "authority", "https://economie.gov.ro/", undefined, 120),
+  rss("ro-caa", "Autoritatea Aeronautică Civilă Română", "authority", "https://www.caa.ro/ro/pages/comunicate", undefined, 60),
+  rss("ro-romatsa", "ROMATSA", "authority", "https://www.romatsa.ro/", undefined, 60),
+  rss("ro-cnab", "Compania Națională Aeroporturi București", "airport", "https://www.cnab.ro/", undefined, 30),
+  rss("ro-otp", "Aeroportul Internațional Henri Coandă București", "airport", "https://www.bucharestairports.ro/otp/", undefined, 30),
+  rss("ro-clj", "Aeroportul Internațional Avram Iancu Cluj", "airport", "https://www.airportcluj.ro/", undefined, 60),
+  rss("ro-ias", "Aeroportul Internațional Iași", "airport", "https://www.aeroport-iasi.ro/", undefined, 60),
+  rss("ro-tsr", "Aeroportul Internațional Timișoara", "airport", "https://www.aerotim.ro/", undefined, 60),
+  rss("ro-sbz", "Aeroportul Internațional Sibiu", "airport", "https://www.sibiuairport.ro/", undefined, 60),
+  rss("ro-craiova-airport", "Aeroportul Internațional Craiova", "airport", "https://www.aeroportcraiova.ro/", undefined, 60),
+  rss("ro-scv", "Aeroportul Internațional Ștefan cel Mare Suceava", "airport", "https://www.aeroportsuceava.ro/", undefined, 60),
+  rss("ro-bcm", "Aeroportul Internațional George Enescu Bacău", "airport", "https://www.bacauairport.ro/", undefined, 60),
+  rss("ro-tarom", "TAROM News", "airline", "https://www.tarom.ro/stiri/", undefined, 60),
+  rss("ro-animawings", "Animawings News", "airline", "https://www.animawings.com/ro/blog", undefined, 60),
+  rss("ro-boardingpass", "BoardingPass", "publication", "https://boardingpass.ro/", "https://boardingpass.ro/feed/", 30),
+  rss("ro-airlinestravel", "Airlines Travel", "publication", "https://airlinestravel.ro/", "https://airlinestravel.ro/feed", 30),
+  rss("ro-travelpress", "Travel Press", "publication", "https://travelpress.ro/", "https://travelpress.ro/feed/", 60),
+  rss("ro-turismmarket", "Turism Market", "publication", "https://www.turismmarket.com/", "https://www.turismmarket.com/feed/", 60),
+  rss("ro-traveladvisor", "Travel Advisor România", "publication", "https://traveladvisor.ro/", "https://traveladvisor.ro/feed/", 60),
+  rss("ro-wallstreet-turism", "Wall-Street.ro Turism", "publication", "https://www.wall-street.ro/tag/turism.html", undefined, 60),
+  rss("ro-profit-turism", "Profit.ro Turism", "publication", "https://www.profit.ro/povesti-cu-profit/turism", undefined, 60),
+  rss("ro-economica-turism", "Economica.net Turism", "publication", "https://www.economica.net/turism", undefined, 60),
+  rss("ro-agerpres-turism", "AGERPRES Turism", "publication", "https://agerpres.ro/economic/turism", undefined, 60),
+  rss("ro-travelistul", "Travelistul", "publication", "https://travelistul.com/", "https://travelistul.com/feed/", 60),
+];
