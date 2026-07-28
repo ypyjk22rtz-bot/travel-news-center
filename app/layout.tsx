@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import "./sources/sources.css";
 import MenuLinkFix from "./menu-link-fix";
+import DealsMenuLink from "./DealsMenuLink";
 
 export const metadata: Metadata = {
   title: "Travel News Center AI",
@@ -11,7 +12,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ro">
-      <body><MenuLinkFix />{children}</body>
+      <body><MenuLinkFix /><DealsMenuLink />{children}</body>
     </html>
   );
 }
