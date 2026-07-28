@@ -42,21 +42,18 @@ function travelpayoutsCtaHtml() {
   const marker = process.env.TRAVELPAYOUTS_MARKER?.trim();
   if (!marker) return "";
   const query = new URLSearchParams({
-    adults: "1",
-    children: "0",
-    infants: "0",
-    trip_class: "0",
     currency: "EUR",
-    locale: "en",
-    marker: `${marker}.tnc_article`,
+    source: "travel-news-center",
+    sub_id: "tnc_article",
+    marker,
   });
-  const url = `https://search.aviasales.com/flights/?${query.toString()}`;
+  const url = `https://portal.travelistul.com/?${query.toString()}`;
   return `
 <div style="margin:28px 0;padding:22px;border:1px solid #dbeafe;border-radius:14px;background:#f8fbff;">
   <h3 style="margin:0 0 8px;">Caută cele mai ieftine bilete</h3>
-  <p style="margin:0 0 16px;">Compară tarifele disponibile pentru următoarea călătorie. Prețurile se verifică în timp real în pagina de căutare.</p>
+  <p style="margin:0 0 16px;">Compară tarifele disponibile pentru următoarea călătorie direct în Portal Travelistul.</p>
   <p style="margin:0;"><a href="${url}" target="_blank" rel="nofollow sponsored noopener" style="display:inline-block;padding:11px 18px;border-radius:8px;background:#0b63ce;color:#fff;text-decoration:none;font-weight:700;">Verifică ofertele de zbor</a></p>
-  <small style="display:block;margin-top:10px;color:#64748b;">Link afiliat Travelpayouts / Aviasales.</small>
+  <small style="display:block;margin-top:10px;color:#64748b;">Link afiliat Travelpayouts, deschis în interfața românească Travelistul.</small>
 </div>`;
 }
 
