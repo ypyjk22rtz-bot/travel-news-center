@@ -24,9 +24,16 @@ type ScanSummary = {
   message?: string;
 };
 
+type Diagnostic = {
+  hasUrl?: boolean;
+  hasServiceKey?: boolean;
+  message?: string;
+};
+
 export default function SourcesPage() {
   const [sources, setSources] = useState<TravelSource[]>([]);
   const [mode, setMode] = useState("demo");
+  const [diagnostic, setDiagnostic] = useState<Diagnostic | null>(null);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [results, setResults] = useState<ScanResult[]>([]);
@@ -37,11 +44,15 @@ export default function SourcesPage() {
   const [query, setQuery] = useState("");
 
   useEffect(() => {
-    fetch("/api/sources")
+    fetch("/api/sources", { cache: "no-store" })
       .then((response) => response.json())
       .then((payload) => {
         setSources(payload.sources ?? []);
         setMode(payload.mode ?? "demo");
+        setDiagnostic(payload.diagnostic ?? null);
+      })
+      .catch((error) => {
+        setDiagnostic({ message: error instanceof Error ? error.message : "Nu s-a putut încărca Source Monitor." });
       })
       .finally(() => setLoading(false));
   }, []);
@@ -66,9 +77,7 @@ export default function SourcesPage() {
     try {
       const response = await fetch("/api/scan", { method: "POST" });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload.error || `Scanarea a eșuat cu HTTP ${response.status}`);
-      }
+      if (!response.ok) throw new Error(payload.error || `Scanarea a eșuat cu HTTP ${response.status}`);
       const nextResults = payload.results ?? [];
       setResults(nextResults);
       setSummary({
@@ -85,6 +94,8 @@ export default function SourcesPage() {
       setScanning(false);
     }
   }
+
+  const modeLabel = mode === "live" ? "LIVE" : mode === "degraded" ? "DEGRADAT" : "DEMO";
 
   return (
     <main className="shell">
@@ -103,8 +114,9 @@ export default function SourcesPage() {
           <button onClick={runScan} disabled={scanning}>{scanning ? "Se verifică sursele..." : "↻ Verifică lotul următor"}</button>
         </header>
 
-        <div className="notice"><strong>{mode === "live" ? "LIVE" : "DEMO"}</strong><span>Publicarea automată este dezactivată. Sursele sunt scanate în loturi, în funcție de prioritate.</span></div>
+        <div className="notice"><strong>{modeLabel}</strong><span>{mode === "live" ? "Supabase este conectat. Publicarea automată rămâne dezactivată." : "Catalogul de rezervă este activ până la remedierea conexiunii Supabase."}</span></div>
 
+        {diagnostic?.message && <section className="panel"><div className="panelTitle"><div><h2>Diagnostic Supabase</h2><p>{diagnostic.message}</p><p>URL configurat: {diagnostic.hasUrl ? "DA" : "NU"} · Cheie server-side configurată: {diagnostic.hasServiceKey ? "DA" : "NU"}</p></div></div></section>}
         {summary && <section className="panel"><div className="panelTitle"><div><h2>Rezultatul ultimei scanări</h2><p>{summary.message || `Verificate: ${summary.checked} · Reușite: ${summary.successful} · Erori: ${summary.failed}`}</p></div></div></section>}
         {scanError && <section className="panel"><div className="panelTitle"><div><h2>Eroare la scanare</h2><p>{scanError}</p></div></div></section>}
 
