@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
 INFORMAȚII:
 ${JSON.stringify(item)}
 
-Returnează exclusiv JSON valid cu cheile: seoTitle, slug, excerpt, metaDescription, article, keywords, tags, facebook, x, pushTitle, pushBody, sourceNote.`;
+Returnează exclusiv JSON valid cu cheile: seoTitle, slug, excerpt, metaDescription, article, keywords, tags, facebook, x, pushTitle, pushBody, sourceNote. Nu modifica sourceName și sourceUrl; acestea sunt adăugate separat de sistem.`;
 
   try {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -57,7 +57,7 @@ Returnează exclusiv JSON valid cu cheile: seoTitle, slug, excerpt, metaDescript
     const payload = await response.json();
     const raw = payload?.choices?.[0]?.message?.content;
     const generated = typeof raw === "string" ? JSON.parse(raw) : null;
-    return NextResponse.json({ mode: "ai", editorial: { ...fallback, ...generated } });
+    return NextResponse.json({ mode: "ai", editorial: { ...fallback, ...generated, sourceName: item.source, sourceUrl: item.url } });
   } catch (error) {
     return NextResponse.json({
       mode: "template",
