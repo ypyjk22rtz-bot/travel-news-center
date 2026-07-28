@@ -1,19 +1,17 @@
 import { NextResponse } from "next/server";
 import { GET as getRadar } from "@/app/api/radar/route";
+import { getSupabaseAdmin } from "@/lib/supabase-admin";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 type RadarSignal = Record<string, any>;
 
-function clamp(value: number) {
-  return Math.max(0, Math.min(100, Math.round(value)));
-}
+function clamp(value: number) { return Math.max(0, Math.min(100, Math.round(value))); }
 
 function monetization(signal: RadarSignal) {
   const text = `${signal.source_title || ""} ${signal.source_excerpt || ""} ${signal.category || ""}`.toLowerCase();
   const channels: Array<{ name: string; score: number; reason: string }> = [];
-
   if (/flight|zbor|route|ruta|airline|airport|fare|ticket|bilet/.test(text)) channels.push({ name: "Travelpayouts", score: 96, reason: "Potrivit pentru căutarea și compararea zborurilor." });
   if (/hotel|resort|accommodation|cazare|destination|destina/.test(text)) channels.push({ name: "Booking / Agoda", score: 88, reason: "Poate converti prin recomandări de cazare." });
   if (/esim|roaming|internet|connectivity|conectivitate/.test(text)) channels.push({ name: "Yesim", score: 82, reason: "Subiect relevant pentru conectivitate în călătorie." });
@@ -53,13 +51,39 @@ function opportunity(signal: RadarSignal) {
   if (monetizationScore >= 80) reasons.push(`Monetizare recomandată prin ${money[0].name}.`);
   if (!reasons.length) reasons.push("Subiect util de urmărit pentru evoluții ulterioare.");
 
+  return { ...signal, opportunity_score: score, opportunity_bucket: bucket, opportunity_reasons: reasons.slice(0, 4), monetization: money, novelty_score: novelty, opportunity_kind: "news" };
+}
+
+function flightDealOpportunity(deal: any) {
+  const score = Number(deal.deal_score || 0);
+  const romania = Number(deal.relevance_romania || 0);
+  const price = Number(deal.price || 0);
+  const discover = clamp(score * 0.62 + romania * 0.25 + (price > 0 && price <= 100 ? 13 : 0));
   return {
-    ...signal,
-    opportunity_score: score,
-    opportunity_bucket: bucket,
-    opportunity_reasons: reasons.slice(0, 4),
-    monetization: money,
-    novelty_score: novelty,
+    id: `flight-${deal.external_id}`,
+    deal_external_id: deal.external_id,
+    source_title: deal.title,
+    generated_title: null,
+    source_excerpt: `${deal.origin || "?"} → ${deal.destination || "?"}, ${price} ${deal.currency || "EUR"}. Tarif orientativ din cache; verificarea finală este obligatorie.`,
+    source_url: deal.booking_url,
+    source_name: "Travelpayouts",
+    status: deal.status || "new",
+    signal_type: "promotii",
+    priority_label: "✈ FLIGHT DEAL",
+    opportunity_score: clamp(score * 0.72 + romania * 0.18 + discover * 0.1),
+    opportunity_bucket: score >= 82 ? "publica_acum" : "flight_deals",
+    opportunity_reasons: [score >= 82 ? "Deal Score ridicat; merită verificat editorial imediat." : "Tarif relevant pentru pagina Flight Deals.", romania >= 90 ? "Plecare din România." : "Plecare accesibilă publicului român.", "Monetizare directă prin Travelpayouts."],
+    monetization: [{ name: "Travelpayouts", score: 98, reason: "Conversie directă prin căutarea zborului." }],
+    intelligence_score: score,
+    discover_score: discover,
+    romania_impact: romania,
+    viral_score: clamp(score * 0.8 + (price <= 100 ? 15 : 0)),
+    breaking_score: 25,
+    ai_confidence: deal.verified ? 85 : 68,
+    duplicate_count: 1,
+    generated: false,
+    opportunity_kind: "flight_deal",
+    booking_url: deal.booking_url,
   };
 }
 
@@ -68,11 +92,16 @@ export async function GET() {
   const radarPayload = await radarResponse.json().catch(() => ({}));
   if (!radarResponse.ok) return NextResponse.json(radarPayload, { status: radarResponse.status });
 
-  const opportunities = (radarPayload.signals || []).map(opportunity).sort((a: any, b: any) => b.opportunity_score - a.opportunity_score);
-  const buckets = opportunities.reduce((acc: Record<string, number>, item: any) => {
-    acc[item.opportunity_bucket] = (acc[item.opportunity_bucket] || 0) + 1;
-    return acc;
-  }, {});
+  const newsOpportunities = (radarPayload.signals || []).map(opportunity);
+  const supabase = getSupabaseAdmin();
+  let flightOpportunities: any[] = [];
+  if (supabase) {
+    const { data } = await supabase.from("flight_deals").select("*").eq("status", "new").order("deal_score", { ascending: false }).limit(20);
+    flightOpportunities = (data || []).filter((deal) => Number(deal.deal_score || 0) >= 60).map(flightDealOpportunity);
+  }
+
+  const opportunities = [...newsOpportunities, ...flightOpportunities].sort((a: any, b: any) => b.opportunity_score - a.opportunity_score);
+  const buckets = opportunities.reduce((acc: Record<string, number>, item: any) => { acc[item.opportunity_bucket] = (acc[item.opportunity_bucket] || 0) + 1; return acc; }, {});
 
   return NextResponse.json({
     opportunities,
@@ -80,7 +109,7 @@ export async function GET() {
       total: opportunities.length,
       publicaAcum: buckets.publica_acum || 0,
       romania: buckets.romania || 0,
-      flightDeals: buckets.flight_deals || 0,
+      flightDeals: opportunities.filter((item: any) => item.opportunity_kind === "flight_deal").length,
       discover: buckets.discover || 0,
       monetizare: buckets.monetizare || 0,
       monitorizeaza: buckets.monitorizeaza || 0,
