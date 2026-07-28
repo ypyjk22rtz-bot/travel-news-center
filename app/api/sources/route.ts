@@ -12,7 +12,7 @@ export async function GET() {
   }
 
   const { data, error } = await supabase
-    .from("sources")
+    .from("tnc_sources")
     .select("*")
     .order("name", { ascending: true });
 
@@ -20,5 +20,8 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ mode: "live", sources: data ?? [] });
+  return NextResponse.json({
+    mode: "live",
+    sources: data && data.length ? data : initialSources,
+  });
 }
