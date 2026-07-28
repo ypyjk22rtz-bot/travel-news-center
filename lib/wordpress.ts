@@ -47,6 +47,7 @@ function travelpayoutsCtaHtml() {
     infants: "0",
     trip_class: "0",
     currency: "EUR",
+    locale: "en",
     marker: `${marker}.tnc_article`,
   });
   const url = `https://search.aviasales.com/flights/?${query.toString()}`;
