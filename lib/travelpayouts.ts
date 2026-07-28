@@ -50,6 +50,8 @@ function buildSearchUrl(item: LatestPrice) {
     infants: "0",
     trip_class: "0",
     currency: "EUR",
+    locale: "en",
+    one_way: item.return_date ? "false" : "true",
     marker: `${getMarker()}.tnc_deals`,
   });
   if (item.depart_date) query.set("depart_date", item.depart_date);
