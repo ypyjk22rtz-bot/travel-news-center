@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./sources/sources.css";
 
 export const metadata: Metadata = {
   title: "Travel News Center AI",
