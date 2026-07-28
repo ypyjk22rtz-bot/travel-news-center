@@ -8,10 +8,24 @@ const ROMANIA_ORIGINS = new Set(["BUH", "OTP", "BBU", "IAS", "CLJ", "TSR", "SBZ"
 const ASIA_DESTINATIONS = new Set(["BKK", "HKT", "SIN", "KUL", "HKG", "NRT", "HND", "KIX", "ICN", "PEK", "PKX", "PVG", "CAN", "SZX", "DPS", "SGN", "HAN", "DAD", "MNL", "CEB", "DEL", "BOM", "CMB"]);
 const EUROPE_DESTINATIONS = new Set(["LON", "LGW", "LTN", "STN", "LHR", "FCO", "CIA", "MXP", "BGY", "VCE", "BCN", "MAD", "VLC", "PAR", "CDG", "ORY", "BVA", "BER", "MUC", "FRA", "VIE", "BUD", "PRG", "WAW", "KRK", "ATH", "SKG", "SOF", "IST", "SAW", "LIS", "OPO", "BRU", "CRL", "AMS", "CPH", "ARN", "OSL", "DUB"]);
 
+type DealsDiagnostics = {
+  configured: boolean;
+  connection: string;
+  fetchedAt: string;
+  originsChecked: number;
+  dealsCount: number;
+};
+
 function formatDate(value?: string) {
   if (!value) return "dată flexibilă";
   const date = new Date(value.length === 10 ? `${value}T12:00:00Z` : value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("ro-RO", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function formatDateTime(value?: string) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString("ro-RO", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
 function uniqueDeals(items: FlightDeal[], limit = 8) {
@@ -35,19 +49,28 @@ export default function DealsPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
+  const [diagnostics, setDiagnostics] = useState<DealsDiagnostics>({ configured: false, connection: "pending", fetchedAt: "", originsChecked: 0, dealsCount: 0 });
 
   async function load() {
     setLoading(true);
     setError("");
     try {
       const response = await fetch("/api/deals", { cache: "no-store" });
-      const payload = await response.json();
+      const payload = await response.json().catch(() => ({}));
       setDeals(payload.deals ?? []);
       setMode(payload.mode ?? (response.ok ? "live" : "error"));
       setError(payload.error ?? "");
+      setDiagnostics({
+        configured: Boolean(payload.configured),
+        connection: String(payload.connection ?? (response.ok ? "active" : "failed")),
+        fetchedAt: String(payload.fetchedAt ?? ""),
+        originsChecked: Number(payload.originsChecked ?? 0),
+        dealsCount: Number(payload.dealsCount ?? payload.deals?.length ?? 0),
+      });
     } catch (cause) {
       setMode("error");
       setError(cause instanceof Error ? cause.message : "Nu s-au putut încărca tarifele.");
+      setDiagnostics((current) => ({ ...current, connection: "failed" }));
     } finally {
       setLoading(false);
     }
@@ -105,17 +128,24 @@ export default function DealsPage() {
 
     <section className="content">
       <header className="topbar"><div><p className="eyebrow">FLIGHT INTELLIGENCE ENGINE</p><h1>Travel Deals AI 2.0</h1><span>Tarife Travelpayouts evaluate după benchmark, economisire estimată, România și potențial editorial.</span></div><button onClick={load} disabled={loading}>{loading ? "Se încarcă..." : "↻ Actualizează"}</button></header>
-      <div className="notice"><strong>{mode === "live" ? "LIVE" : mode === "loading" ? "SE ÎNCARCĂ" : "NECONFIGURAT"}</strong><span>{mode === "live" ? "Benchmarkul este calculat din ofertele curente disponibile, nu dintr-un istoric garantat de 90 de zile. Prețul final trebuie reconfirmat." : error || "Se conectează la Travelpayouts..."}</span></div>
+      <div className="notice"><strong>{mode === "live" ? "LIVE" : mode === "loading" ? "SE ÎNCARCĂ" : "EROARE"}</strong><span>{mode === "live" ? "Travelpayouts este conectat. Prețurile sunt din cache și trebuie reconfirmate înainte de publicare." : error || "Se conectează la Travelpayouts..."}</span></div>
       {message && <div className="notice"><strong>{message.startsWith("Eroare") ? "EROARE" : "REZULTAT"}</strong><span>{message} {!message.startsWith("Eroare") && <Link href="/approval">Deschide Approval Center →</Link>}</span></div>}
 
       <section className="stats">
-        <article><small>Oferte analizate</small><strong>{deals.length}</strong><span>Travelpayouts / Aviasales</span></article>
+        <article><small>Conexiune API</small><strong>{diagnostics.connection === "active" ? "ACTIVĂ" : diagnostics.connection === "pending" ? "…" : "EROARE"}</strong><span>{diagnostics.configured ? "token și marker detectate" : "configurare incompletă"}</span></article>
+        <article><small>Aeroporturi cu rezultate</small><strong>{diagnostics.originsChecked}</strong><span>în răspunsul curent</span></article>
+        <article><small>Oferte primite</small><strong>{diagnostics.dealsCount}</strong><span>Travelpayouts / Aviasales</span></article>
+        <article><small>Ultima actualizare</small><strong>{diagnostics.fetchedAt ? formatDateTime(diagnostics.fetchedAt) : "—"}</strong><span>ora serverului</span></article>
+      </section>
+
+      <section className="stats">
         <article><small>Publică acum</small><strong>{sections.publishNow}</strong><span>scor și economie ridicate</span></article>
         <article><small>Din România</small><strong>{sections.romania.length}</strong><span>plecări prioritare</span></article>
         <article><small>Spre Asia</small><strong>{sections.asia.length}</strong><span>ordonate după Deal Score</span></article>
+        <article><small>Total analizate</small><strong>{deals.length}</strong><span>după deduplicare</span></article>
       </section>
 
-      {mode !== "live" && !deals.length ? <section className="panel"><div className="sourceBox"><strong>Conexiunea Travelpayouts nu este activă.</strong><p>{error || "Adaugă tokenul API și Partner ID-ul în Vercel, apoi pornește un redeploy."}</p></div></section> : null}
+      {mode !== "live" && !deals.length ? <section className="panel"><div className="sourceBox"><strong>Conexiunea Travelpayouts nu este activă.</strong><p>{error || "Verifică tokenul și markerul din Vercel, apoi pornește un redeploy."}</p></div></section> : null}
 
       <section className="panel"><div className="panelTitle"><div><h2>🔥 Cele mai ieftine zboruri din România</h2><p>Plecări din aeroporturile românești, evaluate și după benchmarkul curent.</p></div></div><DealRows items={sections.romania} /></section>
       <section className="panel"><div className="panelTitle"><div><h2>🌍 Cele mai bune oferte spre Asia</h2><p>Oferte spre Asia ordonate după valoare editorială, nu doar după preț.</p></div></div><DealRows items={sections.asia} /></section>
