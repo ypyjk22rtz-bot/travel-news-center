@@ -3,6 +3,17 @@ import { initialSources, type TravelSource } from "@/lib/source-catalog";
 import { getSupabaseAdmin, getSupabaseConfigStatus } from "@/lib/supabase-admin";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+const noStoreHeaders = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+  Pragma: "no-cache",
+  Expires: "0",
+};
+
+function json(payload: unknown, status = 200) {
+  return NextResponse.json(payload, { status, headers: noStoreHeaders });
+}
 
 function toDatabaseSource(source: TravelSource) {
   return {
@@ -40,7 +51,7 @@ export async function GET() {
   const supabase = getSupabaseAdmin();
 
   if (!supabase) {
-    return NextResponse.json({
+    return json({
       mode: "demo",
       sources: initialSources,
       diagnostic: { ...config, message: "Lipsește URL-ul Supabase sau cheia server-side în Vercel." },
@@ -69,7 +80,7 @@ export async function GET() {
 
       if (seededReadError) throw seededReadError;
 
-      return NextResponse.json({
+      return json({
         mode: "live",
         seeded: true,
         sources: (seeded ?? []).map(fromDatabaseSource),
@@ -77,7 +88,7 @@ export async function GET() {
       });
     }
 
-    return NextResponse.json({
+    return json({
       mode: "live",
       seeded: false,
       sources: existing.map(fromDatabaseSource),
@@ -85,7 +96,7 @@ export async function GET() {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Eroare necunoscută Supabase.";
-    return NextResponse.json({
+    return json({
       mode: "degraded",
       sources: initialSources,
       diagnostic: { ...config, message },
