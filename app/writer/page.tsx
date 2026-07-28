@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { EditorialPackage } from "@/lib/ai-writer";
 import type { IntelligenceResult } from "@/lib/intelligence-engine";
@@ -24,14 +24,35 @@ const sample: IntelligenceResult = {
   reasons: ["Afectează călătorii europeni, inclusiv românii.", "Categoria Vize are utilitate practică ridicată.", "Sursa este oficială."],
 };
 
+type WordPressState = {
+  configured: boolean;
+  connected: boolean;
+  livePublishing: boolean;
+  defaultStatus?: string;
+  message?: string;
+  user?: { name: string };
+};
+
 export default function WriterPage() {
   const [editorial, setEditorial] = useState<EditorialPackage | null>(null);
   const [mode, setMode] = useState("");
   const [loading, setLoading] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const [activeTab, setActiveTab] = useState<"article" | "seo" | "social">("article");
+  const [wordpress, setWordpress] = useState<WordPressState | null>(null);
+  const [notice, setNotice] = useState("");
+  const [draftLink, setDraftLink] = useState("");
+
+  useEffect(() => {
+    fetch("/api/wordpress/status")
+      .then(async (response) => ({ ok: response.ok, data: await response.json() }))
+      .then(({ data }) => setWordpress(data))
+      .catch(() => setWordpress({ configured: false, connected: false, livePublishing: false, message: "Status indisponibil." }));
+  }, []);
 
   async function generate() {
     setLoading(true);
+    setNotice("");
     try {
       const response = await fetch("/api/writer", {
         method: "POST",
@@ -43,6 +64,28 @@ export default function WriterPage() {
       setMode(payload.mode ?? "template");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function sendDraft() {
+    if (!editorial) return;
+    setPublishing(true);
+    setNotice("");
+    setDraftLink("");
+    try {
+      const response = await fetch("/api/wordpress/draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ editorial, status: "draft" }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Draftul nu a putut fi creat.");
+      setNotice(`Draft creat în Travelistul.com, ID ${payload.post.id}.`);
+      setDraftLink(payload.post.editLink || payload.post.link || "");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Eroare la trimiterea draftului.");
+    } finally {
+      setPublishing(false);
     }
   }
 
@@ -60,16 +103,24 @@ export default function WriterPage() {
           <a>↗ Published</a>
           <a>⚙ Settings</a>
         </nav>
-        <div className="system"><i></i><div><strong>Writer pregătit</strong><small>Publicarea automată este oprită</small></div></div>
+        <div className="system"><i></i><div><strong>Writer pregătit</strong><small>Publicare live blocată</small></div></div>
       </aside>
 
       <section className="content">
         <header className="topbar">
-          <div><p className="eyebrow">MILESTONE 4</p><h1>AI Writer</h1><span>Transformă un semnal verificat într-un pachet editorial complet.</span></div>
+          <div><p className="eyebrow">MILESTONE 5</p><h1>AI Writer & WordPress</h1><span>Generează, verifică și trimite articolul ca draft pe Travelistul.com.</span></div>
           <button onClick={generate} disabled={loading}>{loading ? "Se generează..." : "✦ Generează pachetul"}</button>
         </header>
 
-        <div className="notice"><strong>{mode === "ai" ? "OPENAI" : "SAFE MODE"}</strong><span>{mode === "ai" ? "Conținut generat prin modelul AI configurat." : "Fără cheie OpenAI, aplicația folosește un șablon editorial factual și editabil."}</span></div>
+        <div className="notice"><strong>{mode === "ai" ? "OPENAI" : "SAFE MODE"}</strong><span>{mode === "ai" ? "Conținut generat prin modelul AI configurat." : "Fără cheie OpenAI, aplicația folosește un șablon factual și editabil."}</span></div>
+
+        <section className="panel">
+          <div className="panelTitle"><div><h2>Conexiune WordPress</h2><p>Credentialele sunt păstrate numai în Vercel Environment Variables.</p></div><span className={wordpress?.connected ? "sourceOk" : "sourceError"}>{wordpress?.connected ? "CONECTAT" : "NECONFIGURAT"}</span></div>
+          <div className="sourceBox">
+            <strong>{wordpress?.connected ? `Travelistul.com · ${wordpress.user?.name ?? "utilizator autorizat"}` : "Travelistul.com nu este încă autorizat"}</strong>
+            <p>{wordpress?.connected ? `Status implicit: ${wordpress.defaultStatus ?? "draft"}. Publicarea live: ${wordpress.livePublishing ? "activată" : "blocată"}.` : wordpress?.message ?? "Se verifică legătura cu WordPress..."}</p>
+          </div>
+        </section>
 
         <section className="panel">
           <div className="panelTitle"><div><h2>Semnal selectat</h2><p>Sursa trebuie verificată înainte de generare și publicare.</p></div><span className="status">INTEL {sample.totalScore}/100</span></div>
@@ -103,8 +154,13 @@ export default function WriterPage() {
             <label>X<textarea value={editorial.x} onChange={(event) => setEditorial({ ...editorial, x: event.target.value })} /></label>
             <label>Push title<input value={editorial.pushTitle} onChange={(event) => setEditorial({ ...editorial, pushTitle: event.target.value })} /></label>
             <label>Push body<textarea value={editorial.pushBody} onChange={(event) => setEditorial({ ...editorial, pushBody: event.target.value })} /></label>
-            <div className="actions"><button>Copiază textele</button><button className="primary">Pregătește draft WordPress</button></div>
           </section>}
+
+          <section className="panel publishPanel">
+            <div className="panelTitle"><div><h2>Trimitere controlată</h2><p>Butonul creează numai un draft. Nu publică articolul live.</p></div></div>
+            <div className="actions"><button className="primary" onClick={sendDraft} disabled={publishing || !wordpress?.connected}>{publishing ? "Se trimite..." : "Trimite draft pe Travelistul.com"}</button></div>
+            {notice && <div className="publishMessage"><strong>{notice}</strong>{draftLink && <a href={draftLink} target="_blank" rel="noreferrer">Deschide draftul în WordPress ↗</a>}</div>}
+          </section>
         </>}
       </section>
     </main>
