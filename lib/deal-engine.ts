@@ -23,9 +23,15 @@ export type FlightDeal = {
   relevanceRomania: number;
   dealScore: number;
   status: "new" | "review" | "approved" | "expired" | "rejected";
+  benchmarkPrice?: number;
+  savingsPercent?: number;
+  priceQuality?: "exceptional" | "very_good" | "good" | "normal" | "weak";
+  editorialVerdict?: "PUBLICĂ ACUM" | "PUBLICĂ" | "MONITORIZEAZĂ" | "IGNORĂ";
+  editorialReasons?: string[];
+  discoverPotential?: number;
 };
 
-const romanianOrigins = new Set(["OTP", "BBU", "IAS", "CLJ", "TSR", "SBZ", "CRA", "BCM", "OMR", "SCV"]);
+const romanianOrigins = new Set(["OTP", "BBU", "BUH", "IAS", "CLJ", "TSR", "SBZ", "CRA", "BCM", "OMR", "SCV"]);
 
 export function scoreDeal(input: Omit<FlightDeal, "relevanceRomania" | "dealScore" | "status">): FlightDeal {
   let relevanceRomania = 20;
