@@ -33,15 +33,30 @@ export default function ApprovalPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
+  const [modalMessage, setModalMessage] = useState("");
   const [filter, setFilter] = useState("toate");
 
-  async function load() {
+  async function load(selectedId?: string) {
     setLoading(true);
-    const response = await fetch("/api/approval", { cache: "no-store" });
-    const payload = await response.json();
-    if (!response.ok) setMessage(payload.error || "Nu s-a putut încărca Approval Center.");
-    else setItems(payload.items || []);
-    setLoading(false);
+    try {
+      const response = await fetch("/api/approval", { cache: "no-store" });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setMessage(payload.error || "Nu s-a putut încărca Approval Center.");
+        return;
+      }
+      const nextItems: ApprovalItem[] = payload.items || [];
+      setItems(nextItems);
+      const idToRefresh = selectedId || selected?.id;
+      if (idToRefresh) {
+        const refreshed = nextItems.find((item) => item.id === idToRefresh) || null;
+        setSelected(refreshed);
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Nu s-a putut încărca Approval Center.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => { void load(); }, []);
@@ -49,35 +64,70 @@ export default function ApprovalPage() {
   const visible = useMemo(() => items.filter((item) => filter === "toate" || item.status === filter), [items, filter]);
 
   async function generate(item: ApprovalItem) {
-    setBusy(item.id); setMessage("Se generează pachetul editorial AI...");
-    const response = await fetch("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ newsItemId: item.id }) });
-    const payload = await response.json();
-    setBusy("");
-    if (!response.ok) return setMessage(payload.error || "Generarea a eșuat.");
-    setMessage("Pachetul editorial a fost generat.");
-    await load();
+    setBusy(item.id);
+    setModalMessage("Se generează articolul, SEO și pachetul social. Poate dura până la aproximativ un minut...");
+    setMessage("");
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 120000);
+
+    try {
+      const response = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newsItemId: item.id }),
+        signal: controller.signal,
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setModalMessage(`Eroare: ${payload.error || `Generarea a eșuat cu HTTP ${response.status}.`}`);
+        return;
+      }
+      setModalMessage("Pachetul editorial a fost generat cu succes.");
+      await load(item.id);
+    } catch (error) {
+      const text = error instanceof DOMException && error.name === "AbortError"
+        ? "Generarea a durat prea mult. Apasă din nou după câteva secunde."
+        : error instanceof Error ? error.message : "Generarea a eșuat.";
+      setModalMessage(`Eroare: ${text}`);
+    } finally {
+      window.clearTimeout(timeout);
+      setBusy("");
+    }
   }
 
   async function changeStatus(item: ApprovalItem, status: string) {
     setBusy(item.id);
-    const response = await fetch("/api/approval", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ newsItemId: item.id, status }) });
-    const payload = await response.json();
-    setBusy("");
-    if (!response.ok) return setMessage(payload.error || "Statusul nu a putut fi schimbat.");
-    setMessage(status === "approved" ? "Articol aprobat." : "Știre respinsă.");
-    setSelected(null);
-    await load();
+    setModalMessage("Se actualizează statusul...");
+    try {
+      const response = await fetch("/api/approval", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ newsItemId: item.id, status }) });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) return setModalMessage(`Eroare: ${payload.error || "Statusul nu a putut fi schimbat."}`);
+      setModalMessage(status === "approved" ? "Articol aprobat." : "Știre respinsă.");
+      await load(item.id);
+    } finally {
+      setBusy("");
+    }
   }
 
   async function sendDraft(item: ApprovalItem) {
-    setBusy(item.id); setMessage("Se creează draftul în WordPress...");
-    const response = await fetch("/api/wordpress/draft", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ newsItemId: item.id }) });
-    const payload = await response.json();
-    setBusy("");
-    if (!response.ok) return setMessage(payload.error || "Draftul WordPress nu a putut fi creat.");
-    setMessage("Draft WordPress creat cu succes.");
-    await load();
-    if (payload.post?.editLink) window.open(payload.post.editLink, "_blank", "noopener,noreferrer");
+    setBusy(item.id);
+    setModalMessage("Se creează draftul în WordPress...");
+    try {
+      const response = await fetch("/api/wordpress/draft", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ newsItemId: item.id }) });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) return setModalMessage(`Eroare: ${payload.error || "Draftul WordPress nu a putut fi creat."}`);
+      setModalMessage("Draft WordPress creat cu succes.");
+      await load(item.id);
+      if (payload.post?.editLink) window.open(payload.post.editLink, "_blank", "noopener,noreferrer");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  function openItem(item: ApprovalItem) {
+    setModalMessage("");
+    setSelected(item);
   }
 
   return <main className="shell">
@@ -92,7 +142,7 @@ export default function ApprovalPage() {
     </aside>
 
     <section className="content">
-      <header className="topbar"><div><p className="eyebrow">MILESTONE 5</p><h1>Approval Center</h1><span>Generează, verifică, aprobă și trimite articolele ca draft în WordPress.</span></div><button onClick={load} disabled={loading}>{loading ? "Se încarcă..." : "↻ Reîncarcă"}</button></header>
+      <header className="topbar"><div><p className="eyebrow">MILESTONE 5</p><h1>Approval Center</h1><span>Generează, verifică, aprobă și trimite articolele ca draft în WordPress.</span></div><button onClick={() => load()} disabled={loading}>{loading ? "Se încarcă..." : "↻ Reîncarcă"}</button></header>
       <div className="notice"><strong>DRAFT ONLY</strong><span>Nicio știre nu este publicată automat. WordPress primește doar drafturi.</span></div>
       {message && <section className="panel"><p>{message}</p></section>}
 
@@ -109,18 +159,19 @@ export default function ApprovalPage() {
           {visible.map((item) => <article className="newsRow" key={item.id}>
             <div className={`score ${item.intelligence_score >= 80 ? "high" : "medium"}`}><strong>{item.intelligence_score}</strong><small>INTEL</small></div>
             <div className="newsMain"><div className="badges"><span>{item.importance}</span><em>{item.category}</em><em>{item.status}</em></div><h3>{item.generated?.seo_title || item.source_title}</h3><p>Discover {item.discover_score}/100 · detectată {new Date(item.detected_at).toLocaleString("ro-RO")}</p></div>
-            <button className="open" onClick={() => setSelected(item)}>Deschide</button>
+            <button className="open" onClick={() => openItem(item)}>Deschide</button>
           </article>)}
           {!loading && visible.length === 0 && <p>Nu există articole în această categorie.</p>}
         </div>
       </section>
     </section>
 
-    {selected && <div className="modalBackdrop" onClick={() => setSelected(null)}><section className="modal" onClick={(event) => event.stopPropagation()}>
-      <button className="close" onClick={() => setSelected(null)}>×</button>
+    {selected && <div className="modalBackdrop" onClick={() => busy ? undefined : setSelected(null)}><section className="modal" onClick={(event) => event.stopPropagation()}>
+      <button className="close" onClick={() => busy ? undefined : setSelected(null)}>×</button>
       <p className="eyebrow">{selected.status.toUpperCase()}</p><h2>{selected.generated?.seo_title || selected.source_title}</h2>
       <div className="modalMeta"><span>{selected.category}</span><span>Intel {selected.intelligence_score}/100</span><span>Discover {selected.discover_score}/100</span></div>
       <div className="sourceBox"><strong>Sursa oficială</strong><p>{selected.source_excerpt || "Fără rezumat disponibil."}</p><a href={selected.source_url} target="_blank" rel="noreferrer">Deschide sursa oficială ↗</a></div>
+      {modalMessage && <div className="notice"><strong>{modalMessage.startsWith("Eroare") ? "EROARE" : busy ? "ÎN LUCRU" : "REZULTAT"}</strong><span>{modalMessage}</span></div>}
       {selected.generated ? <>
         <label>Titlu SEO<input value={selected.generated.seo_title || ""} readOnly /></label>
         <label>Meta description<textarea value={selected.generated.meta_description || ""} readOnly /></label>
@@ -128,11 +179,11 @@ export default function ApprovalPage() {
         <div className="sourceBox"><strong>Facebook</strong><p>{selected.social?.facebook || "—"}</p><strong>X</strong><p>{selected.social?.x_text || "—"}</p><strong>Push</strong><p>{selected.social?.push_notification || "—"}</p></div>
       </> : <div className="sourceBox"><strong>Conținut negenerat</strong><p>Apasă „Generează cu AI” pentru articol, SEO și pachetul social.</p></div>}
       <div className="actions">
-        {!selected.generated && <button onClick={() => generate(selected)} disabled={busy === selected.id}>Generează cu AI</button>}
-        {selected.generated && selected.status !== "approved" && <button onClick={() => changeStatus(selected, "approved")} disabled={busy === selected.id}>Aprobă</button>}
-        {selected.generated && <button className="primary" onClick={() => sendDraft(selected)} disabled={busy === selected.id}>Trimite draft în WordPress</button>}
+        {!selected.generated && <button onClick={() => generate(selected)} disabled={busy === selected.id}>{busy === selected.id ? "Se generează..." : "Generează cu AI"}</button>}
+        {selected.generated && selected.status !== "approved" && <button onClick={() => changeStatus(selected, "approved")} disabled={busy === selected.id}>{busy === selected.id ? "Se procesează..." : "Aprobă"}</button>}
+        {selected.generated && <button className="primary" onClick={() => sendDraft(selected)} disabled={busy === selected.id}>{busy === selected.id ? "Se trimite..." : "Trimite draft în WordPress"}</button>}
         {selected.publication?.wordpress_url && <a href={selected.publication.wordpress_url} target="_blank" rel="noreferrer">Deschide draftul ↗</a>}
-        <button className="danger" onClick={() => changeStatus(selected, "rejected")} disabled={busy === selected.id}>Respinge</button>
+        <button className="danger" onClick={() => changeStatus(selected, "rejected")} disabled={busy === selected.id}>{busy === selected.id ? "Așteaptă..." : "Respinge"}</button>
       </div>
     </section></div>}
   </main>;
