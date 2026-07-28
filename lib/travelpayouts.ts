@@ -43,23 +43,21 @@ function getMarker() {
 
 function buildSearchUrl(item: LatestPrice) {
   const query = new URLSearchParams({
-    origin_iata: item.origin,
-    destination_iata: item.destination,
+    origin: item.origin,
+    destination: item.destination,
     adults: "1",
-    children: "0",
-    infants: "0",
-    trip_class: "0",
+    cabin: "economy",
     currency: "EUR",
-    locale: "en_us",
-    one_way: item.return_date ? "false" : "true",
-    marker: `${getMarker()}.tnc_deals`,
+    source: "travel-news-center",
+    sub_id: "tnc_deals",
+    marker: getMarker(),
   });
   if (item.depart_date) query.set("depart_date", item.depart_date);
   if (item.return_date) query.set("return_date", item.return_date);
 
-  // Use the international results endpoint directly. The search subdomain may
-  // redirect visitors to a regional .ru host based on cookies or geolocation.
-  return `https://www.aviasales.com/searches/new?${query.toString()}`;
+  // Keep visitors inside the Romanian Travelistul experience. The portal can
+  // use these route parameters now or after a future prefill enhancement.
+  return `https://portal.travelistul.com/?${query.toString()}`;
 }
 
 function relevance(origin: string) {
