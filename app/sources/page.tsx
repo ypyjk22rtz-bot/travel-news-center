@@ -16,12 +16,22 @@ type ScanResult = {
   responseMs?: number;
 };
 
+type ScanSummary = {
+  checked: number;
+  successful: number;
+  failed: number;
+  completedAt?: string;
+  message?: string;
+};
+
 export default function SourcesPage() {
   const [sources, setSources] = useState<TravelSource[]>([]);
   const [mode, setMode] = useState("demo");
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [results, setResults] = useState<ScanResult[]>([]);
+  const [summary, setSummary] = useState<ScanSummary | null>(null);
+  const [scanError, setScanError] = useState("");
   const [filter, setFilter] = useState("toate");
   const [queue, setQueue] = useState("toate");
   const [query, setQuery] = useState("");
@@ -51,10 +61,26 @@ export default function SourcesPage() {
 
   async function runScan() {
     setScanning(true);
+    setScanError("");
+    setSummary(null);
     try {
       const response = await fetch("/api/scan", { method: "POST" });
-      const payload = await response.json();
-      setResults(payload.results ?? []);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || `Scanarea a eșuat cu HTTP ${response.status}`);
+      }
+      const nextResults = payload.results ?? [];
+      setResults(nextResults);
+      setSummary({
+        checked: payload.checked ?? nextResults.length,
+        successful: payload.successful ?? nextResults.filter((item: ScanResult) => item.ok).length,
+        failed: payload.failed ?? nextResults.filter((item: ScanResult) => !item.ok).length,
+        completedAt: payload.completedAt,
+        message: nextResults.length === 0 ? "Scanarea s-a încheiat, dar API-ul nu a returnat rezultate." : undefined,
+      });
+    } catch (error) {
+      setResults([]);
+      setScanError(error instanceof Error ? error.message : "Eroare necunoscută la scanare.");
     } finally {
       setScanning(false);
     }
@@ -78,6 +104,9 @@ export default function SourcesPage() {
         </header>
 
         <div className="notice"><strong>{mode === "live" ? "LIVE" : "DEMO"}</strong><span>Publicarea automată este dezactivată. Sursele sunt scanate în loturi, în funcție de prioritate.</span></div>
+
+        {summary && <section className="panel"><div className="panelTitle"><div><h2>Rezultatul ultimei scanări</h2><p>{summary.message || `Verificate: ${summary.checked} · Reușite: ${summary.successful} · Erori: ${summary.failed}`}</p></div></div></section>}
+        {scanError && <section className="panel"><div className="panelTitle"><div><h2>Eroare la scanare</h2><p>{scanError}</p></div></div></section>}
 
         <section className="stats">
           <article><small>Surse încărcate</small><strong>{sources.length}</strong><span>catalog activ</span></article>
@@ -112,7 +141,7 @@ export default function SourcesPage() {
           </div>}
         </section>
 
-        {results.length > 0 && <section className="panel"><div className="panelTitle"><div><h2>Ultima scanare</h2><p>{results.filter((result) => result.ok).length} răspunsuri valide din {results.length} surse testate.</p></div></div><div className="scanResults">{results.map((result) => <article key={result.sourceId}><strong>{result.source}</strong><span className={result.ok ? "sourceOk" : "sourceError"}>{result.ok ? `HTTP ${result.status}` : result.error}</span><small>{result.title || "Fără titlu detectat"}</small></article>)}</div></section>}
+        {results.length > 0 && <section className="panel"><div className="panelTitle"><div><h2>Detalii scanare</h2><p>{results.filter((result) => result.ok).length} răspunsuri valide din {results.length} surse testate.</p></div></div><div className="scanResults">{results.map((result) => <article key={result.sourceId}><strong>{result.source}</strong><span className={result.ok ? "sourceOk" : "sourceError"}>{result.ok ? `HTTP ${result.status}` : result.error}</span><small>{result.title || "Fără titlu detectat"}</small></article>)}</div></section>}
       </section>
     </main>
   );
