@@ -21,6 +21,7 @@ export async function POST() {
   const results = [] as Array<Record<string, unknown>>;
 
   for (const source of sources) {
+    const started = Date.now();
     try {
       const response = await fetch(source.feedUrl ?? source.url, {
         headers: { "User-Agent": "TravelNewsCenter/0.2 (+https://travelistul.com)" },
@@ -37,6 +38,7 @@ export async function POST() {
         status: response.status,
         title: extractTitle(body),
         hash,
+        durationMs: Date.now() - started,
         checkedAt: new Date().toISOString(),
       });
     } catch (error) {
@@ -45,6 +47,7 @@ export async function POST() {
         source: source.name,
         ok: false,
         error: error instanceof Error ? error.message : "Eroare necunoscută",
+        durationMs: Date.now() - started,
         checkedAt: new Date().toISOString(),
       });
     }
@@ -52,12 +55,14 @@ export async function POST() {
 
   const supabase = getSupabaseAdmin();
   if (supabase) {
-    await supabase.from("source_checks").insert(results.map((result) => ({
+    await supabase.from("tnc_source_checks").insert(results.map((result) => ({
       source_id: result.sourceId,
       status: result.ok ? "ok" : "error",
       http_status: result.status ?? null,
       content_hash: result.hash ?? null,
+      page_title: result.title ?? null,
       error_message: result.error ?? null,
+      duration_ms: result.durationMs ?? null,
       checked_at: result.checkedAt,
     })));
   }
