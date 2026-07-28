@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { initialSources, type TravelSource } from "@/lib/source-catalog";
+import { romanianSources } from "@/lib/romanian-sources";
 import { getSupabaseAdmin, getSupabaseConfigStatus } from "@/lib/supabase-admin";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+const allSources = [...initialSources, ...romanianSources];
 
 const noStoreHeaders = {
   "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
@@ -25,7 +28,7 @@ function toDatabaseSource(source: TravelSource) {
     website_url: source.url,
     feed_url: source.feedUrl ?? null,
     active: source.active,
-    official: true,
+    official: source.kind !== "publication",
     scan_frequency_minutes: source.frequencyMinutes,
     updated_at: new Date().toISOString(),
   };
@@ -53,12 +56,18 @@ export async function GET() {
   if (!supabase) {
     return json({
       mode: "demo",
-      sources: initialSources,
+      sources: allSources,
       diagnostic: { ...config, message: "Lipsește URL-ul Supabase sau cheia server-side în Vercel." },
     });
   }
 
   try {
+    const { error: seedError } = await supabase
+      .from("tnc_sources")
+      .upsert(allSources.map(toDatabaseSource), { onConflict: "id" });
+
+    if (seedError) throw seedError;
+
     const { data: existing, error: readError } = await supabase
       .from("tnc_sources")
       .select("*")
@@ -66,39 +75,18 @@ export async function GET() {
 
     if (readError) throw readError;
 
-    if (!existing?.length) {
-      const { error: seedError } = await supabase
-        .from("tnc_sources")
-        .upsert(initialSources.map(toDatabaseSource), { onConflict: "id" });
-
-      if (seedError) throw seedError;
-
-      const { data: seeded, error: seededReadError } = await supabase
-        .from("tnc_sources")
-        .select("*")
-        .order("name", { ascending: true });
-
-      if (seededReadError) throw seededReadError;
-
-      return json({
-        mode: "live",
-        seeded: true,
-        sources: (seeded ?? []).map(fromDatabaseSource),
-        diagnostic: config,
-      });
-    }
-
     return json({
       mode: "live",
-      seeded: false,
-      sources: existing.map(fromDatabaseSource),
+      seeded: true,
+      catalogSize: allSources.length,
+      sources: (existing ?? []).map(fromDatabaseSource),
       diagnostic: config,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Eroare necunoscută Supabase.";
     return json({
       mode: "degraded",
-      sources: initialSources,
+      sources: allSources,
       diagnostic: { ...config, message },
     });
   }
