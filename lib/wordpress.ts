@@ -1,4 +1,5 @@
 import type { EditorialPackage } from "@/lib/ai-writer";
+import { affiliateOffersHtml } from "@/lib/affiliate-ai";
 
 export type WordPressConfig = {
   url: string;
@@ -36,25 +37,6 @@ function termSlug(value: string) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 80);
-}
-
-function travelpayoutsCtaHtml() {
-  const marker = process.env.TRAVELPAYOUTS_MARKER?.trim();
-  if (!marker) return "";
-  const query = new URLSearchParams({
-    currency: "EUR",
-    source: "travel-news-center",
-    sub_id: "tnc_article",
-    marker,
-  });
-  const url = `https://portal.travelistul.com/?${query.toString()}`;
-  return `
-<div style="margin:28px 0;padding:22px;border:1px solid #dbeafe;border-radius:14px;background:#f8fbff;">
-  <h3 style="margin:0 0 8px;">Caută cele mai ieftine bilete</h3>
-  <p style="margin:0 0 16px;">Compară tarifele disponibile pentru următoarea călătorie direct în Portal Travelistul.</p>
-  <p style="margin:0;"><a href="${url}" target="_blank" rel="nofollow sponsored noopener" style="display:inline-block;padding:11px 18px;border-radius:8px;background:#0b63ce;color:#fff;text-decoration:none;font-weight:700;">Verifică ofertele de zbor</a></p>
-  <small style="display:block;margin-top:10px;color:#64748b;">Link afiliat Travelpayouts, deschis în interfața românească Travelistul.</small>
-</div>`;
 }
 
 async function findOrCreateWordPressTerm(
@@ -190,7 +172,8 @@ export async function createWordPressPost(
     await Promise.all(uniqueTagNames.map((tag) => findOrCreateWordPressTerm(config, "tags", tag)))
   ).filter((id): id is number => typeof id === "number" && Number.isFinite(id));
 
-  const content = `${editorial.article}${travelpayoutsCtaHtml()}\n<hr />\n<p><strong>Sursa oficială:</strong> <a href="${editorial.sourceUrl}" target="_blank" rel="noopener noreferrer">${editorial.sourceName}</a></p>`;
+  const affiliateBlock = affiliateOffersHtml(editorial);
+  const content = `${editorial.article}${affiliateBlock}\n<hr />\n<p><strong>Sursa oficială:</strong> <a href="${editorial.sourceUrl}" target="_blank" rel="noopener noreferrer">${editorial.sourceName}</a></p>`;
 
   const response = await fetch(`${config.url}/wp-json/wp/v2/posts`, {
     method: "POST",
