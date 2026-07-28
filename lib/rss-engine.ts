@@ -52,13 +52,17 @@ function absoluteUrl(value: string, baseUrl: string) {
 }
 
 export function discoverFeedUrl(html: string, pageUrl: string) {
-  const links = [...html.matchAll(/<link\b[^>]*>/gi)].map((match) => match[0]);
-  for (const link of links) {
+  const linkPattern = /<link\b[^>]*>/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = linkPattern.exec(html)) !== null) {
+    const link = match[0];
     if (!/rel=["'][^"']*alternate/i.test(link)) continue;
     if (!/type=["']application\/(rss\+xml|atom\+xml)|type=["']text\/xml/i.test(link)) continue;
     const href = link.match(/href=["']([^"']+)["']/i)?.[1];
     if (href) return absoluteUrl(decodeEntities(href), pageUrl);
   }
+
   return null;
 }
 
