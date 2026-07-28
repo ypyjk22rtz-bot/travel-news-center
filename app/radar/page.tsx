@@ -79,9 +79,9 @@ export default function RadarPage() {
   const [message, setMessage] = useState("");
   const [modalMessage, setModalMessage] = useState("");
 
-  async function load(selectedId?: string) {
+  async function load(selectedId?: string, keepMessage = false) {
     setLoading(true);
-    setMessage("");
+    if (!keepMessage) setMessage("");
     try {
       const response = await fetch("/api/radar", { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
@@ -95,6 +95,26 @@ export default function RadarPage() {
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Travel Radar nu a putut fi încărcat.");
     } finally {
+      setLoading(false);
+    }
+  }
+
+  async function scanAndLoad() {
+    setLoading(true);
+    setMessage("Se verifică următorul lot de surse. Poate dura până la un minut...");
+    try {
+      const scanResponse = await fetch("/api/scan", { method: "POST", cache: "no-store" });
+      const scan = await scanResponse.json().catch(() => ({}));
+      if (!scanResponse.ok) throw new Error(scan.error || "Scanarea surselor a eșuat.");
+
+      const checked = Number(scan.checked || 0);
+      const successful = Number(scan.successful || 0);
+      const found = Number(scan.newsFound || 0);
+      const inserted = Number(scan.newsInserted || 0);
+      setMessage(`Scanare terminată: ${checked} surse verificate, ${successful} reușite, ${found} articole găsite, ${inserted} știri noi salvate.`);
+      await load(undefined, true);
+    } catch (error) {
+      setMessage(`Eroare la scanare: ${error instanceof Error ? error.message : "Scanarea a eșuat."}`);
       setLoading(false);
     }
   }
@@ -154,8 +174,8 @@ export default function RadarPage() {
     </aside>
 
     <section className="content">
-      <header className="topbar"><div><p className="eyebrow">TRAVEL INTELLIGENCE ENGINE</p><h1>Travel Radar 3.0</h1><span>Priorități, trending, duplicate și generare AI direct din radar.</span></div><button onClick={() => load()} disabled={loading}>{loading ? "Se actualizează..." : "↻ Actualizează radarul"}</button></header>
-      <div className="notice"><strong>CONTROL UMAN</strong><span>AI recomandă și generează. Nicio știre nu este publicată automat.</span></div>
+      <header className="topbar"><div><p className="eyebrow">TRAVEL INTELLIGENCE ENGINE</p><h1>Travel Radar 3.0</h1><span>Priorități, trending, duplicate și generare AI direct din radar.</span></div><button onClick={scanAndLoad} disabled={loading}>{loading ? "Se scanează sursele..." : "↻ Scanează și actualizează"}</button></header>
+      <div className="notice"><strong>CONTROL UMAN</strong><span>Butonul pornește scanarea surselor, salvează știrile noi și actualizează Radarul. Nicio știre nu este publicată automat.</span></div>
       {message && <section className="panel"><p>{message}</p></section>}
 
       <section className="stats">
@@ -185,7 +205,7 @@ export default function RadarPage() {
             <div className="newsMain"><div className="badges"><span>{item.priority_label}</span><em>{label(item.signal_type)}</em><em>RO {item.romania_impact}/100</em>{item.duplicate_count > 1 && <em>{item.duplicate_count} SURSE</em>}</div><h3>{item.generated_title || item.source_title}</h3><p>{stars(item.romania_impact)} · Încredere {item.confidence}/100 · Discover {item.discover_score || 0}/100 {item.generated ? "· AI COMPLET" : "· NEGENERAT"}</p></div>
             <span className="status">{item.verdict || item.status}</span><button className="open" onClick={() => openSignal(item)}>Analizează</button>
           </article>)}
-          {!loading && visible.length === 0 && <p>Nu există semnale pentru filtrele selectate.</p>}
+          {!loading && visible.length === 0 && <p>Nu există semnale. Apasă „Scanează și actualizează” pentru a verifica următorul lot de surse.</p>}
         </div>
       </section>
     </section>
