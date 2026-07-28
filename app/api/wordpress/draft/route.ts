@@ -1,10 +1,26 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
-import { createWordPressPost, getWordPressConfig } from "@/lib/wordpress";
+import { generateFeaturedImage } from "@/lib/openai-image";
+import { createWordPressPost, getWordPressConfig, uploadWordPressMedia } from "@/lib/wordpress";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 300;
 export const dynamic = "force-dynamic";
+
+function extractImagePrompt(ctaHtml: string | null | undefined, fallback: string) {
+  const match = ctaHtml?.match(/<!--\s*image-prompt:\s*([\s\S]*?)\s*-->/i);
+  return match?.[1]?.trim() || `Editorial travel news image illustrating: ${fallback}`;
+}
+
+function safeFilename(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "travel-news-featured-image";
+}
 
 export async function POST(request: Request) {
   try {
@@ -54,7 +70,17 @@ export async function POST(request: Request) {
     }).select("id").single();
 
     try {
-      const post = await createWordPressPost(config, editorial, "draft");
+      const imagePrompt = extractImagePrompt(generated.cta_html, editorial.seoTitle);
+      const image = await generateFeaturedImage(imagePrompt);
+      const media = await uploadWordPressMedia(
+        config,
+        image.bytes,
+        `${safeFilename(editorial.slug || editorial.seoTitle)}.${image.extension}`,
+        image.mimeType,
+        editorial.seoTitle,
+      );
+
+      const post = await createWordPressPost(config, editorial, "draft", media.id);
       const now = new Date().toISOString();
       await supabase.from("tnc_news_items").update({ status: "wordpress_draft", updated_at: now }).eq("id", newsItemId);
       if (job.data?.id) {
@@ -69,10 +95,16 @@ export async function POST(request: Request) {
         event_type: "wordpress_draft_created",
         entity_type: "news_item",
         entity_id: newsItemId,
-        message: `Draft WordPress creat: ${editorial.seoTitle}`,
-        metadata: { wordpressPostId: post.id, editLink: post.editLink },
+        message: `Draft WordPress cu featured image creat: ${editorial.seoTitle}`,
+        metadata: {
+          wordpressPostId: post.id,
+          editLink: post.editLink,
+          featuredMediaId: media.id,
+          featuredImageUrl: media.sourceUrl,
+          imageModel: image.model,
+        },
       });
-      return NextResponse.json({ ok: true, post });
+      return NextResponse.json({ ok: true, post, featuredImage: media });
     } catch (publishError) {
       const message = publishError instanceof Error ? publishError.message : "Eroare la crearea draftului.";
       if (job.data?.id) await supabase.from("tnc_publication_jobs").update({ status: "failed", error_message: message }).eq("id", job.data.id);
