@@ -43,10 +43,50 @@ export async function testWordPressConnection(config: WordPressConfig) {
   return { id: user.id, name: user.name, slug: user.slug };
 }
 
+export async function uploadWordPressMedia(
+  config: WordPressConfig,
+  bytes: Buffer,
+  filename: string,
+  mimeType: string,
+  altText: string,
+) {
+  const response = await fetch(`${config.url}/wp-json/wp/v2/media`, {
+    method: "POST",
+    headers: {
+      Authorization: authHeader(config),
+      "Content-Type": mimeType,
+      "Content-Disposition": `attachment; filename="${filename.replace(/[^a-zA-Z0-9._-]/g, "-")}"`,
+    },
+    body: bytes,
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.message || `WordPress media upload failed (${response.status})`);
+  }
+
+  if (payload?.id) {
+    await fetch(`${config.url}/wp-json/wp/v2/media/${payload.id}`, {
+      method: "POST",
+      headers: {
+        Authorization: authHeader(config),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ alt_text: altText, caption: "", description: "" }),
+    });
+  }
+
+  return {
+    id: payload.id as number,
+    sourceUrl: payload.source_url as string,
+  };
+}
+
 export async function createWordPressPost(
   config: WordPressConfig,
   editorial: EditorialPackage,
   requestedStatus?: "draft" | "pending" | "publish",
+  featuredMediaId?: number,
 ) {
   const safeStatus = requestedStatus === "publish" && config.allowLivePublishing
     ? "publish"
@@ -68,6 +108,7 @@ export async function createWordPressPost(
       content,
       excerpt: editorial.excerpt,
       status: safeStatus,
+      featured_media: featuredMediaId || undefined,
       meta: {
         _yoast_wpseo_metadesc: editorial.metaDescription,
         _yoast_wpseo_focuskw: editorial.keywords[0] ?? "",
@@ -85,5 +126,6 @@ export async function createWordPressPost(
     status: payload.status,
     link: payload.link,
     editLink: `${config.url}/wp-admin/post.php?post=${payload.id}&action=edit`,
+    featuredMediaId: featuredMediaId || null,
   };
 }
